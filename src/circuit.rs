@@ -1,17 +1,7 @@
-use crate::utils;
-use ark_bn254::Fr;
+use crate::utils::{self, sha256_msg_block_sequence};
+use ark_ff::PrimeField;
 use ark_r1cs_std::{uint32::UInt32, uint8::UInt8};
 use ark_relations::r1cs::SynthesisError;
-
-pub const STATE_LEN: usize = 8;
-
-type State = [u32; STATE_LEN];
-
-pub type ConstraintF = Fr;
-
-const H: State = [
-    0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
-];
 
 /// Updates the state of the SHA-256 compression function.
 ///
@@ -28,10 +18,11 @@ const H: State = [
 /// * `data` - A slice of 64 `UInt8<ConstraintF>` elements representing the input
 ///   data block to be compressed. Representing the message schedule W.
 
-pub fn one_compression_round(
-    state: &mut [UInt32<ConstraintF>],
-    data: &[UInt8<ConstraintF>],
+pub fn one_compression_round<ConstraintF: PrimeField>(
+    state: &mut Vec<UInt32<ConstraintF>>,
+    data: &Vec<UInt8<ConstraintF>>,
 ) -> Result<Vec<UInt32<ConstraintF>>, SynthesisError> {
+    assert_eq!(state.len(), 8);
     assert_eq!(data.len(), 64);
 
     let mut w = vec![UInt32::constant(0); 64];
@@ -103,5 +94,53 @@ pub fn one_compression_round(
         *s = s.wrapping_add(hi);
     }
 
-    Ok(h.clone())
+    Ok(h)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::H;
+
+    use super::*;
+    use ark_bn254::Fr;
+    use ark_r1cs_std::R1CSVar;
+    use ark_relations::r1cs::ConstraintSystem;
+    use ark_std::iter;
+
+    #[test]
+    fn test_one_compression_round() {
+        let cs = ConstraintSystem::<Fr>::new_ref();
+
+        // Example state and data
+        let state: Vec<UInt32<Fr>> = vec![
+            UInt32::constant(H[0]),
+            UInt32::constant(H[1]),
+            UInt32::constant(H[2]),
+            UInt32::constant(H[3]),
+            UInt32::constant(H[4]),
+            UInt32::constant(H[5]),
+            UInt32::constant(H[6]),
+            UInt32::constant(H[7]),
+        ];
+
+        let data: Vec<UInt8<Fr>> = iter::repeat(0u8).take(64).map(UInt8::constant).collect();
+
+        // Call the one_compression_round function
+        let result_var = one_compression_round(&mut state.clone(), &data).unwrap();
+
+        // Compute the expected result outside the circuit
+        let expected_result = {
+            let state_u32 = state.iter().map(|x| x.value().unwrap()).collect::<Vec<_>>();
+            let data_u8 = data.iter().map(|x| x.value().unwrap()).collect::<Vec<_>>();
+            utils::update_state_ref(state_u32, data_u8).unwrap()
+        };
+
+        // Compare the results
+        for (result, expected) in result_var.iter().zip(expected_result.iter()) {
+            assert_eq!(result.value().unwrap(), *expected);
+        }
+
+        // Check if the constraint system is satisfied
+        assert!(cs.is_satisfied().unwrap());
+    }
 }

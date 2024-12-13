@@ -809,6 +809,7 @@ dependencies = [
  "ark-relations",
  "ark-std",
  "folding-schemes",
+ "generic-array",
  "hex",
  "hex-literal",
  "num-bigint",
