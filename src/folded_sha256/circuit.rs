@@ -1,4 +1,4 @@
-use crate::utils::{self};
+use crate::folded_sha256::utils;
 use ark_ff::PrimeField;
 use ark_r1cs_std::{uint32::UInt32, uint8::UInt8};
 use ark_relations::r1cs::SynthesisError;
@@ -99,7 +99,7 @@ pub fn one_compression_round<ConstraintF: PrimeField>(
 
 #[cfg(test)]
 mod tests {
-    use crate::H;
+    use crate::folded_sha256::main::H;
 
     use super::*;
     use ark_bn254::Fr;

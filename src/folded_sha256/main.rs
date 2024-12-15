@@ -2,8 +2,8 @@
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
 #![allow(clippy::upper_case_acronyms)]
-mod circuit;
-mod utils;
+use crate::folded_sha256::circuit;
+use crate::folded_sha256::utils::{sha256_msg_block_sequence, update_state_ref};
 
 use std::time::Instant;
 
@@ -23,7 +23,6 @@ use folding_schemes::folding::nova::{Nova, PreprocessorParam};
 use folding_schemes::frontend::FCircuit;
 use folding_schemes::transcript::poseidon::poseidon_canonical_config;
 use folding_schemes::{Error, FoldingScheme};
-use utils::sha256_msg_block_sequence;
 
 /// This is the circuit that we want to fold, it implements the FCircuit trait from the Sonobe library.
 /// The parameter z_i denotes the current state which contains 8 elements (the H state of the SHA-256 algorithm),
@@ -63,7 +62,7 @@ pub const STATE_LEN: usize = 8;
 
 type State = [u32; STATE_LEN];
 
-const H: State = [
+pub const H: State = [
     0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
 ];
 
@@ -113,7 +112,7 @@ impl<F: PrimeField> FCircuit<F> for FoldedSha256FCircuit<F> {
             .map(|x| x.into_bigint().to_bytes_le()[0])
             .collect();
 
-        let updated_state = utils::update_state_ref(z_to_u32, _external_inputs_to_u8).unwrap();
+        let updated_state = update_state_ref(z_to_u32, _external_inputs_to_u8).unwrap();
 
         let out: Vec<F> = updated_state.iter().map(|&x| F::from(x)).collect();
 
@@ -245,6 +244,7 @@ pub mod tests {
     }
 }
 
+#[allow(dead_code)]
 fn main() {
     let input: Vec<u8> = b"abc".to_vec();
     let block_sequence = sha256_msg_block_sequence(input);

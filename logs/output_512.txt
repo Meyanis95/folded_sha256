@@ -1,0 +1,19 @@
+Input Length: 512
+Nova-based SHA256 compression function iterations
+=========================================================
+Prepare Nova ProverParams & VerifierParams
+Initialize FoldingScheme
+PublicParams::setup, took 1.751370958s 
+Generating a RecursiveSNARK...
+Nova::prove_step 0: 397.02025ms
+Nova::prove_step 1: 394.502459ms
+Nova::prove_step 2: 545.286292ms
+Nova::prove_step 3: 529.206959ms
+Nova::prove_step 4: 536.798625ms
+Nova::prove_step 5: 526.842834ms
+Nova::prove_step 6: 531.558708ms
+Nova::prove_step 7: 549.278084ms
+Nova::prove_step 8: 537.541042ms
+Total time taken by RecursiveSNARK::prove_steps: 4.54837575s
+Run the Nova's IVC verifier
+RecursiveSNARK::verify took 41.592875ms

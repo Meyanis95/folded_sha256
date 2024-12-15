@@ -1,0 +1,43 @@
+Input Length: 2048
+Nova-based SHA256 compression function iterations
+=========================================================
+Prepare Nova ProverParams & VerifierParams
+Initialize FoldingScheme
+PublicParams::setup, took 1.721258208s 
+Generating a RecursiveSNARK...
+Nova::prove_step 0: 401.500167ms
+Nova::prove_step 1: 393.7235ms
+Nova::prove_step 2: 530.710333ms
+Nova::prove_step 3: 534.403291ms
+Nova::prove_step 4: 526.941667ms
+Nova::prove_step 5: 557.385208ms
+Nova::prove_step 6: 675.552375ms
+Nova::prove_step 7: 560.687583ms
+Nova::prove_step 8: 571.885792ms
+Nova::prove_step 9: 555.27475ms
+Nova::prove_step 10: 595.574334ms
+Nova::prove_step 11: 544.724ms
+Nova::prove_step 12: 564.424667ms
+Nova::prove_step 13: 547.919084ms
+Nova::prove_step 14: 542.500833ms
+Nova::prove_step 15: 546.536917ms
+Nova::prove_step 16: 540.417458ms
+Nova::prove_step 17: 572.01675ms
+Nova::prove_step 18: 548.042208ms
+Nova::prove_step 19: 531.13175ms
+Nova::prove_step 20: 527.956958ms
+Nova::prove_step 21: 570.085583ms
+Nova::prove_step 22: 533.979ms
+Nova::prove_step 23: 538.368ms
+Nova::prove_step 24: 548.226375ms
+Nova::prove_step 25: 543.860042ms
+Nova::prove_step 26: 567.4595ms
+Nova::prove_step 27: 559.265042ms
+Nova::prove_step 28: 543.330375ms
+Nova::prove_step 29: 569.677875ms
+Nova::prove_step 30: 536.185083ms
+Nova::prove_step 31: 523.9595ms
+Nova::prove_step 32: 542.884584ms
+Total time taken by RecursiveSNARK::prove_steps: 17.947881958s
+Run the Nova's IVC verifier
+RecursiveSNARK::verify took 44.629ms
