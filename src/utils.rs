@@ -12,7 +12,6 @@ pub const K: [u32; 64] = [
 ];
 
 pub const BLOCK_LENGTH_BYTES: usize = 64;
-pub const BLOCK_LENGTH: usize = 512;
 
 pub fn update_state_ref(state: Vec<u32>, data: Vec<u8>) -> Result<Vec<u32>, &'static str> {
     assert_eq!(data.len(), 64);
@@ -66,7 +65,12 @@ pub fn update_state_ref(state: Vec<u32>, data: Vec<u8>) -> Result<Vec<u32>, &'st
         h[0] = t0.wrapping_add(t1);
     }
 
-    Ok(h.to_vec())
+    // Update the current hash values with the compressed chunk
+    for i in 0..8 {
+        h[i] = h[i].wrapping_add(state[i]);
+    }
+
+    Ok(h)
 }
 
 fn add_sha256_padding(input: Vec<u8>) -> Vec<u8> {
@@ -116,4 +120,41 @@ pub fn sha256_msg_block_sequence(input: Vec<u8>) -> Vec<[u8; BLOCK_LENGTH_BYTES]
         .map(|b| b.try_into().unwrap())
         .collect();
     blocks_vec_bytes
+}
+
+#[allow(dead_code)]
+pub fn finalize(state: Vec<u32>) -> Vec<u8> {
+    state
+        .iter()
+        .flat_map(|&x| x.to_be_bytes().to_vec())
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sha256() {
+        let data = b"abc".to_vec();
+        let mut state = vec![
+            0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
+            0x5be0cd19,
+        ];
+
+        let padded_data = sha256_msg_block_sequence(data.clone());
+        assert_eq!(padded_data[0].len(), 64);
+
+        for block in padded_data {
+            state = update_state_ref(state.clone(), block.to_vec()).unwrap();
+        }
+
+        let hash = finalize(state);
+        let expected_hash = vec![
+            0xba, 0x78, 0x16, 0xbf, 0x8f, 0x01, 0xcf, 0xea, 0x41, 0x41, 0x40, 0xde, 0x5d, 0xae,
+            0x22, 0x23, 0xb0, 0x03, 0x61, 0xa3, 0x96, 0x17, 0x7a, 0x9c, 0xb4, 0x10, 0xff, 0x61,
+            0xf2, 0x00, 0x15, 0xad,
+        ];
+        assert_eq!(hash, expected_hash);
+    }
 }

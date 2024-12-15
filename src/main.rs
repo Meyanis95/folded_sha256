@@ -23,6 +23,7 @@ use folding_schemes::folding::nova::{Nova, PreprocessorParam};
 use folding_schemes::frontend::FCircuit;
 use folding_schemes::transcript::poseidon::poseidon_canonical_config;
 use folding_schemes::{Error, FoldingScheme};
+use utils::sha256_msg_block_sequence;
 
 pub const STATE_LEN: usize = 8;
 
@@ -71,19 +72,15 @@ impl<F: PrimeField> FCircuit<F> for FoldedSha256FCircuit<F> {
         // Convert z_i to Vec<u32>
         let z_to_u32: Vec<u32> = z_i.iter().map(|&x| bigint_to_u32(x)).collect::<Vec<u32>>();
 
-        // Convert Vec<u32> to [u32; 8]
-        let mut z_to_u32_array: [u32; 8] = [0; 8];
-        z_to_u32_array.copy_from_slice(&z_to_u32);
+        // Convert external_inputs to Vec<u8>
+        let _external_inputs_to_u8: Vec<u8> = _external_inputs
+            .iter()
+            // we only need to take the most significant byte for each input
+            .map(|x| x.into_bigint().to_bytes_le()[0])
+            .collect();
 
-        let updated_state = utils::update_state_ref(
-            z_to_u32,
-            _external_inputs
-                .iter()
-                // we only need to take the most significant byte of each input
-                .map(|x| x.into_bigint().to_bytes_le()[0])
-                .collect(),
-        )
-        .unwrap();
+        let updated_state = utils::update_state_ref(z_to_u32, _external_inputs_to_u8).unwrap();
+
         let out: Vec<F> = updated_state.iter().map(|&x| F::from(x)).collect();
 
         Ok(out)
@@ -96,6 +93,7 @@ impl<F: PrimeField> FCircuit<F> for FoldedSha256FCircuit<F> {
         z_i: Vec<FpVar<F>>,
         _external_inputs: Vec<FpVar<F>>,
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
+        println!("generate_step_constraints");
         // z_i is the state of our sha2 algo
         // external_inputs is the message block to be compressed
         let mut state: Vec<UInt32<F>> = vec![
@@ -114,11 +112,12 @@ impl<F: PrimeField> FCircuit<F> for FoldedSha256FCircuit<F> {
             .map(|x| UInt8::from_fp(&x.clone()).unwrap().0)
             .collect();
 
+        // THe circuit is outputting the right state, so the issue might be in type conversion
         let h = circuit::one_compression_round(&mut state, &data).unwrap();
 
-        let result = h.iter().map(|x| x.to_fp().unwrap()).collect();
+        let h_to_fp_var: Vec<FpVar<F>> = h.iter().map(|x| x.to_fp().unwrap()).collect();
 
-        Ok(result)
+        Ok(h_to_fp_var)
     }
 }
 
@@ -127,7 +126,6 @@ pub mod tests {
     use super::*;
     use ark_r1cs_std::{alloc::AllocVar, R1CSVar};
     use ark_relations::r1cs::ConstraintSystem;
-    use utils::sha256_msg_block_sequence;
 
     // test to check that the MultiInputsFCircuit computes the same values inside and outside the circuit
     #[test]
@@ -136,17 +134,20 @@ pub mod tests {
 
         let circuit = FoldedSha256FCircuit::<Fr>::new(()).unwrap();
         let z_i = vec![
-            Fr::from(1_u32),
-            Fr::from(1_u32),
-            Fr::from(1_u32),
-            Fr::from(1_u32),
-            Fr::from(1_u32),
-            Fr::from(1_u32),
-            Fr::from(1_u32),
-            Fr::from(1_u32),
+            Fr::from(H[0]),
+            Fr::from(H[1]),
+            Fr::from(H[2]),
+            Fr::from(H[3]),
+            Fr::from(H[4]),
+            Fr::from(H[5]),
+            Fr::from(H[6]),
+            Fr::from(H[7]),
         ];
 
-        let external_inputs = vec![Fr::from(155_u8); 64];
+        let input: Vec<u8> = b"abc".to_vec();
+        let block_sequence = sha256_msg_block_sequence(input)[0].to_vec();
+        let external_inputs: Vec<ark_ff::Fp<ark_ff::MontBackend<ark_bn254::FrConfig, 4>, 4>> =
+            block_sequence.iter().map(|x| Fr::from(x.clone())).collect();
 
         let z_i1 = circuit
             .step_native(0, z_i.clone(), external_inputs.clone())
@@ -158,12 +159,64 @@ pub mod tests {
         let computed_z_i1Var = circuit
             .generate_step_constraints(cs.clone(), 0, z_iVar.clone(), externalInputsVar)
             .unwrap();
+
         assert_eq!(computed_z_i1Var.value().unwrap(), z_i1);
+    }
+
+    #[test]
+    fn test_sha256_correctness() {
+        let circuit = FoldedSha256FCircuit::<Fr>::new(()).unwrap();
+        let z_i: Vec<ark_ff::Fp<ark_ff::MontBackend<ark_bn254::FrConfig, 4>, 4>> = vec![
+            Fr::from(H[0]),
+            Fr::from(H[1]),
+            Fr::from(H[2]),
+            Fr::from(H[3]),
+            Fr::from(H[4]),
+            Fr::from(H[5]),
+            Fr::from(H[6]),
+            Fr::from(H[7]),
+        ];
+
+        let input: Vec<u8> = b"abc".to_vec();
+        let block_sequence = sha256_msg_block_sequence(input);
+
+        let external_inputs: Vec<ark_ff::Fp<ark_ff::MontBackend<ark_bn254::FrConfig, 4>, 4>> =
+            block_sequence[0]
+                .iter()
+                .map(|x| Fr::from(x.clone()))
+                .collect();
+
+        let z_i1 = circuit
+            .step_native(0, z_i.clone(), external_inputs.clone())
+            .unwrap();
+
+        // Convert the final state to a hexadecimal string
+        let final_hash = z_i1
+            .iter()
+            .flat_map(|x| {
+                let bytes = x.into_bigint().to_bytes_be();
+                // Take the last 4 bytes to avoid leading zeros
+                bytes[bytes.len() - 4..].to_vec()
+            })
+            .collect::<Vec<u8>>();
+
+        let hex_string = final_hash
+            .iter()
+            .map(|byte| format!("{:02x}", byte))
+            .collect::<String>();
+
+        assert_eq!(
+            hex_string,
+            // Corresponding sha256 hash of "abc"
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
     }
 }
 
 fn main() {
-    let num_steps = 10;
+    let input: Vec<u8> = b"abc".to_vec();
+    let block_sequence = sha256_msg_block_sequence(input);
+
     let initial_state = vec![
         Fr::from(H[0]),
         Fr::from(H[1]),
@@ -175,7 +228,7 @@ fn main() {
         Fr::from(H[7]),
     ];
 
-    let external_inputs = vec![Fr::from(0_u8); 64];
+    // let external_inputs = vec![Fr::from(0_u8); 64];
 
     let F_circuit = FoldedSha256FCircuit::<Fr>::new(()).unwrap();
 
@@ -204,10 +257,18 @@ fn main() {
     let mut folding_scheme = N::init(&nova_params, F_circuit, initial_state.clone()).unwrap();
 
     // compute a step of the IVC
-    for i in 0..num_steps {
+    for (i, external_inputs_at_step) in block_sequence.iter().enumerate() {
         let start = Instant::now();
         folding_scheme
-            .prove_step(rng, external_inputs.clone(), None)
+            .prove_step(
+                rng,
+                external_inputs_at_step
+                    .clone()
+                    .iter()
+                    .map(|x| Fr::from(x.clone()))
+                    .collect(),
+                None,
+            )
             .unwrap();
         println!("Nova::prove_step {}: {:?}", i, start.elapsed());
     }
@@ -219,4 +280,22 @@ fn main() {
         ivc_proof,
     )
     .unwrap();
+
+    // Convert the final state to a hexadecimal string
+    // let final_hash = folding_scheme
+    //     .z_i
+    //     .iter()
+    //     .flat_map(|x| {
+    //         let bytes = x.into_bigint().to_bytes_be();
+    //         // Take the last 4 bytes to avoid leading zeros
+    //         bytes[bytes.len() - 4..].to_vec()
+    //     })
+    //     .collect::<Vec<u8>>();
+
+    // let hex_string = final_hash
+    //     .iter()
+    //     .map(|byte| format!("{:02x}", byte))
+    //     .collect::<String>();
+
+    // println!("Final hash: {}", hex_string);
 }

@@ -1,4 +1,4 @@
-use crate::utils::{self, sha256_msg_block_sequence};
+use crate::utils::{self};
 use ark_ff::PrimeField;
 use ark_r1cs_std::{uint32::UInt32, uint8::UInt8};
 use ark_relations::r1cs::SynthesisError;
@@ -90,8 +90,8 @@ pub fn one_compression_round<ConstraintF: PrimeField>(
         h[0] = t0.wrapping_add(&t1);
     }
 
-    for (s, hi) in state.iter_mut().zip(h.iter()) {
-        *s = s.wrapping_add(hi);
+    for i in 0..8 {
+        h[i] = h[i].wrapping_add(&state[i].clone());
     }
 
     Ok(h)
