@@ -25,6 +25,40 @@ use folding_schemes::transcript::poseidon::poseidon_canonical_config;
 use folding_schemes::{Error, FoldingScheme};
 use utils::sha256_msg_block_sequence;
 
+/// This is the circuit that we want to fold, it implements the FCircuit trait from the Sonobe library.
+/// The parameter z_i denotes the current state which contains 8 elements (the H state of the SHA-256 algorithm),
+/// and z_{i+1} denotes the next state which we get by applying the compression function.
+///
+/// In this example, we set the state to be the previous state together with the next 512 bits block
+/// as external input, and the new state is an array which contains the new state H.
+///
+/// This is useful for example if we want to fold verification of a large pre-image hash, where the
+/// circuit F performs one compression round of the SHA-256 algorithm and is folded for each of the
+/// 512-bit message blocks.
+///
+///        w_1     w_2     w_3     w_4     
+///        │       │       │       │      
+///        ▼       ▼       ▼       ▼      
+///       ┌─┐     ┌─┐     ┌─┐     ┌─┐     
+/// ─────►│F├────►│F├────►│F├────►│F├────►
+///  z_1  └─┘ z_2 └─┘ z_3 └─┘ z_4 └─┘ z_5
+///
+///
+/// where each F is:
+///    w_i                                        
+///     │     ┌────────────────────┐              
+///     │     │FCircuit            │              
+///     │     │                    │              
+///     └────►│ h =Compress(w_i)   │              
+///  ────────►│ │                  ├───────►      
+///   z_i     │ └──►z_{i+1}=[h]    │  z_{i+1}
+///           │                    │              
+///           └────────────────────┘
+///
+/// where each w_i value is the next block to be hashed.
+///
+/// The last state z_i will be the final H state, that then can be concatenated to get the final hash.
+
 pub const STATE_LEN: usize = 8;
 
 type State = [u32; STATE_LEN];
@@ -93,7 +127,6 @@ impl<F: PrimeField> FCircuit<F> for FoldedSha256FCircuit<F> {
         z_i: Vec<FpVar<F>>,
         _external_inputs: Vec<FpVar<F>>,
     ) -> Result<Vec<FpVar<F>>, SynthesisError> {
-        println!("generate_step_constraints");
         // z_i is the state of our sha2 algo
         // external_inputs is the message block to be compressed
         let mut state: Vec<UInt32<F>> = vec![
@@ -112,7 +145,6 @@ impl<F: PrimeField> FCircuit<F> for FoldedSha256FCircuit<F> {
             .map(|x| UInt8::from_fp(&x.clone()).unwrap().0)
             .collect();
 
-        // THe circuit is outputting the right state, so the issue might be in type conversion
         let h = circuit::one_compression_round(&mut state, &data).unwrap();
 
         let h_to_fp_var: Vec<FpVar<F>> = h.iter().map(|x| x.to_fp().unwrap()).collect();
@@ -228,16 +260,11 @@ fn main() {
         Fr::from(H[7]),
     ];
 
-    // let external_inputs = vec![Fr::from(0_u8); 64];
-
     let F_circuit = FoldedSha256FCircuit::<Fr>::new(()).unwrap();
 
     let poseidon_config = poseidon_canonical_config::<Fr>();
     let mut rng = rand::rngs::OsRng;
 
-    /// The idea here is that eventually we could replace the next line chunk that defines the
-    /// `type N = Nova<...>` by using another folding scheme that fulfills the `FoldingScheme`
-    /// trait, and the rest of our code would be working without needing to be updated.
     type N = Nova<
         Projective,
         GVar,
@@ -281,21 +308,21 @@ fn main() {
     )
     .unwrap();
 
-    // Convert the final state to a hexadecimal string
-    // let final_hash = folding_scheme
-    //     .z_i
-    //     .iter()
-    //     .flat_map(|x| {
-    //         let bytes = x.into_bigint().to_bytes_be();
-    //         // Take the last 4 bytes to avoid leading zeros
-    //         bytes[bytes.len() - 4..].to_vec()
-    //     })
-    //     .collect::<Vec<u8>>();
+    // Convert the final state to the final hexadecimal string
+    let final_hash = folding_scheme
+        .z_i
+        .iter()
+        .flat_map(|x| {
+            let bytes = x.into_bigint().to_bytes_be();
+            // Take the last 4 bytes to avoid leading zeros
+            bytes[bytes.len() - 4..].to_vec()
+        })
+        .collect::<Vec<u8>>();
 
-    // let hex_string = final_hash
-    //     .iter()
-    //     .map(|byte| format!("{:02x}", byte))
-    //     .collect::<String>();
+    let hex_string = final_hash
+        .iter()
+        .map(|byte| format!("{:02x}", byte))
+        .collect::<String>();
 
-    // println!("Final hash: {}", hex_string);
+    println!("Final hash: {}", hex_string);
 }
